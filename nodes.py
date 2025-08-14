@@ -1,10 +1,19 @@
 from langchain.prompts import PromptTemplate
 from langchain_google_genai import GoogleGenerativeAI
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
 
 llm = GoogleGenerativeAI(model= "gemini-2.0-flash")
+
+def _take_incoming(state: dict, *keys: str)->str:
+    for k in keys:
+        v = state.get(k,"")
+        if isinstance(v, str) and v.strip():
+            return v
+    return ""
+
 
 def question(state):
     """Answering the question with LangChain"""
@@ -20,13 +29,13 @@ def question(state):
         User's question: {question}""")
     chain = prompt | llm
 
-    question_text = state.get("query", "") or state.get("answer", "")
+    question_text = _take_incoming(state, "query", "answer")
 
     if not question_text:
         return {"error": "No question provided."}
     
     answer = chain.invoke({"question": question_text})
-    return {"answer": answer, "query": question_text}
+    return {"answer": str(answer), "query": question_text}
 
 def generate_code(state):
     """Generating the code with LangChain"""
@@ -40,14 +49,14 @@ def generate_code(state):
         - Do not add explanations or comments unless asked.""")
     chain = prompt | llm
 
-    user_request_code = state.get("query", "") or state.get("answer", "")
+    user_request_code = _take_incoming(state, "query", "answer")
 
     if not user_request_code:
         return {"error": "No request to generating code provided."}
 
     generated_code = chain.invoke({"request": user_request_code})
 
-    return {"generate_code": generated_code, "query": user_request_code}
+    return {"generate_code": str(generated_code), "query": user_request_code}
 
 def edit_code(state):
     """Editing the code with LangChain"""
@@ -61,14 +70,14 @@ def edit_code(state):
 
     chain = prompt | llm
 
-    user_request_edit_code = state.get("query", "") or state.get("answer", "")
+    user_request_edit_code = _take_incoming(state, "query", "answer", "generate_code")
 
     if not user_request_edit_code:
         return {"error": "No request to editing code provided."}
     
     edited_code = chain.invoke({"request": user_request_edit_code})
 
-    return {"edit_code": edited_code, "query": user_request_edit_code}
+    return {"edit_code": str(edited_code), "query": user_request_edit_code}
 
 def generate_text(state):
     """Generating the text with LangChain"""
@@ -81,21 +90,21 @@ def generate_text(state):
 
     chain = prompt | llm
 
-    user_request_text = state.get("query", "") or state.get("answer", "")
+    user_request_text = _take_incoming(state, "query", "answer")
 
     if not user_request_text:
         return {"error": "No request to generating text provided."}
 
     generated_text = chain.invoke({"request": user_request_text})
 
-    return {"generate_text": generated_text, "query": user_request_text}
+    return {"generate_text": str(generated_text), "query": user_request_text}
 
 def edit_text(state):
     """Editing the text with LangChain"""
 
     prompt = PromptTemplate.from_template("""   
         Edit a text that will satisfy the user's request: {request}.
-        explain what the problem was and show the changes step by step using a comments in the text redactor.
+        explain what the problem was and show the changes step by step using comments in the text redactor.
         Like this:
         User_text -> Hi, my name are Maria.
         AI_edited_code -> Hi my name is Maria.(You've made a grammatical mistake.)
@@ -105,59 +114,69 @@ def edit_text(state):
 
     chain = prompt | llm
 
-    user_request_edit_text = state.get("query", "") or state.get("answer", "")
+    user_request_edit_text = _take_incoming(state, "query", "answer", "generate_text")
 
     if not user_request_edit_text:
         return {"error": "No request to editing text provided."}
     
     edited_text = chain.invoke({"request": user_request_edit_text})
 
-    return {"edit_text": edited_text, "query": user_request_edit_text}
+    return {"edit_text": str(edited_text), "query": user_request_edit_text}
 
 def save_code(state):
     """Saving edited/generated code"""
 
     prompt = PromptTemplate.from_template("""
-        Save the code that was generated/edited: {code}.
-        The code must be saved in the appropriate file.
-        Code in c++ => output.cpp
-        Code in python => output.py
-        Code in javascript => output.js
-        Code in java => output.java
-        Code in go => output.go
-        Code in php => output.php
-        Code in ruby => output.rb
-        Code in c# => output.cs
-        Code in rust => output.rs""")
+        Decide the best filename from this fixed set:
+        output.cpp, output.py, output.js, output.java, output.go,
+        output.php, output.rb, output.cs, output.rs
+
+        Return STRICTLY in this format (no extra text, no code fences):
+        FILENAME: <chosen_name>
+        <code content here>
+
+        Code to save:
+        {code}""")
     
     chain = prompt | llm
 
-    user_request_code_s = state.get("query", "") or state.get("answer", "")
-
+    user_request_code_s = _take_incoming(state, "edit_code", "generate_code", "answer", "query")
     if not user_request_code_s:
         return {"error": "No request to saving code provided."}
 
-    saved_code = chain.invoke({"code": user_request_code_s})
+    llm_out = str(chain.invoke({"code": user_request_code_s})).strip()
+    lines = llm_out.splitlines()
+
+    if not lines:
+        return {"error": "LLM returned empty content for saving code"}
     
-    return {"save_code": saved_code, "query": user_request_code_s}
+    header = lines[0].strip()
+    prefix = "FILENAME: "
+
+    if not header.startswith(prefix):
+        filename = "output.py"
+        code_text = llm_out
+    else:
+        filename = header[len(prefix):].strip() or "output.py"
+        code_text = "\n".join(lines[1:])
+
+    path = Path(filename)
+    path.write_text(code_text, encoding="utf-8")
+
+    return {"save_code": f"Saved to {path.resolve()}"}
 
 def save_text(state):
-    """Saving edited/generated text"""
-
-    prompt = PromptTemplate.from_template("""
-        Save the text that was generated/edited: {text}.
-        The text must be saved in file output.txt.""")
+    """Persist generated/edited text to output.txt"""
     
-    chain = prompt | llm
-
-    user_request_text_s = state.get("query", "") or state.get("answer", "")
+    user_request_text_s = _take_incoming(state, "edit_text", "generate_text", "answer", "query")
 
     if not user_request_text_s:
-        return {"error": "No request to saving text provided."}
-
-    saved_text = chain.invoke({"text": user_request_text_s})
+        return {"error": "No text to save"}
     
-    return {"save_text": saved_text, "query": user_request_text_s}    
+    path = Path("output.txt")
+    path.write_text(str(user_request_text_s), encoding="utf-8")
+
+    return {"save_text": f"Saved to {path.resolve()}"}
 
 def router(state):
     """Routing the state based on the input"""
@@ -170,66 +189,56 @@ def router(state):
         Respond ONLY with one of: question, code, text.""")
     
     chain = prompt | llm
-    routing = chain.invoke({"input": state["query"]})
+    incoming = _take_incoming(state, "query")
+    if not incoming:
+        return "text"
 
+    routing = chain.invoke({"input": incoming})
     result = str(routing).strip().lower()
 
-    return {"next": result if result in ["question", "code", "text"] else "text"}
+    return result if result in ("question", "code", "text") else "text"
 
 def code_router(state):
-    """Routing the state based on the input for code"""
+    """Routing the state based on the input for code: generate_code vs edit_code"""
 
     prompt = PromptTemplate.from_template("""
-        You are an AI assistant that decides whether the user wants to generate new code or edit existing code.
+        Decide what the user wants:
+        - new code → respond: generate_code
+        - fix/refactor existing → respond: edit_code
 
-        If the input asks to create, write, build, implement or generate something new — respond with: generate_code  
-        If the input asks to fix, refactor, edit, correct, improve or modify existing code — respond with: edit_code  
-
-        Respond ONLY with one of the following (no quotes, no explanations):  
-        generate_code  
-        edit_code
-
-        Input: {input}""")
+        Input: {input}
+        ONLY one of: generate_code, edit_code""")
     
     chain = prompt | llm
 
-    user_request = state.get("query", "") or state.get("answer", "")
-    if not user_request:
-        return {"next", "generate_code"}
+    incoming = _take_incoming(state, "query", "answer", "generate_code", "edit_code")
+    if not incoming:
+        return "generate_code"
     
-    routing = chain.invoke({"input": user_request})
-
+    routing = chain.invoke({"input": incoming})
     result = str(routing).strip().lower()
 
-    return {"next" : result if result in ["generate_code", "edit_code"] else "generate_code"}
+    return result if result in ("generate_code", "edit_code") else "generate_code"
 
 def text_router(state):
-    """Routing the state based on the input for text"""
+    """Routing the state based on the input for text: generate_text vs edit_text"""
 
     prompt = PromptTemplate.from_template("""
-        You are an AI assistant that decides whether the user wants to generate new text or edit existing text.
+        Decide what the user wants:
+        - generate new text → respond: generate_text
+        - edit/improve existing → respond: edit_text
 
-        If the input asks to create, write, describe, build or generate something — respond with: generate_text  
-        If the input asks to fix, edit, improve, rewrite, correct grammar or spelling — respond with: edit_text  
-
-        Respond ONLY with one of the following (no quotes, no explanations):  
-        generate_text  
-        edit_text
-
-        Input: {input}""")
+        Input: {input}
+        ONLY one of: generate_text, edit_text""")
     
     chain = prompt | llm
 
-    user_request = state.get("query", "") or state.get("answer", "")
-    if not user_request:
-        return {"next": "generate_text"}
+    incoming = _take_incoming(state, "query", "answer", "generate_text", "edit_text")
     
-    routing = chain.invoke({"input": user_request})
-
+    if not incoming:
+        return "generate_text"
+    
+    routing = chain.invoke({"input": incoming})
     result = str(routing).strip().lower()
 
-    return {"next": result if result in ["generate_text", "edit_text"] else "generate_text"}
-
-def passtrough(state):
-    """Pass through the state without any changes"""
-    return state
+    return result if result in ("generate_text", "edit_text") else "generate_text"
