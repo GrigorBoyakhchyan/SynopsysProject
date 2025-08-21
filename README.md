@@ -27,9 +27,8 @@ The project exposes a simple CLI loop and a reusable `graph_builder()` you can i
 ├─ main.py        # CLI: compiles the graph and runs a simple REPL
 ├─ graph.py       # graph_builder(): constructs the LangGraph StateGraph
 └─ nodes.py       # Node implementations (LLM prompts, save-to-disk helpers, routers)
-<img width="3840" height="3452" alt="Untitled diagram _ Mermaid Chart-2025-08-21-204540" src="https://github.com/user-attachments/assets/09699f02-ba4d-4948-8118-3a0d82439e1c" />
-
 ```
+<img width="3840" height="3452" alt="Untitled diagram _ Mermaid Chart-2025-08-21-204540" src="https://github.com/user-attachments/assets/09699f02-ba4d-4948-8118-3a0d82439e1c" />
 
 ---
 
