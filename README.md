@@ -27,6 +27,9 @@ The project exposes a simple CLI loop and a reusable `graph_builder()` you can i
 ├─ main.py        # CLI: compiles the graph and runs a simple REPL
 ├─ graph.py       # graph_builder(): constructs the LangGraph StateGraph
 └─ nodes.py       # Node implementations (LLM prompts, save-to-disk helpers, routers)
+
+<img width="1916" height="1068" alt="image" src="https://github.com/user-attachments/assets/b100b5fc-bcb2-40dc-a33d-265a272e937b" />
+
 ```
 
 ---
